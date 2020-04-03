@@ -2081,7 +2081,7 @@ class Airfoil:
         CD_kwargs  = kwargs.pop("CD_kwargs", {})
         Cm_kwargs  = kwargs.pop("Cm_kwargs", {})
         verbose = kwargs.pop('verbose', True)
-        if verbose: print('Generating Polynomial Fits for airfoil {}'.format(self._name))
+        if verbose: print('Generating Polynomial Fits for airfoil {}'.format(self.name))
         CL_kwargs['verbose'] = verbose
         CD_kwargs['verbose'] = verbose
         Cm_kwargs['verbose'] = verbose
