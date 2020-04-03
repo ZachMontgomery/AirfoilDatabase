@@ -2081,6 +2081,7 @@ class Airfoil:
         CD_kwargs  = kwargs.pop("CD_kwargs", {})
         Cm_kwargs  = kwargs.pop("Cm_kwargs", {})
         verbose = kwargs.pop('verbose', True)
+        if verbose: print('Generating Polynomial Fits for airfoil {}'.format(self._name))
         CL_kwargs['verbose'] = verbose
         CD_kwargs['verbose'] = verbose
         Cm_kwargs['verbose'] = verbose
@@ -2094,6 +2095,7 @@ class Airfoil:
                 # max_order = max(max_order, dof_max_order)
 
         # CL
+        if verbose: print('Performing CL curve fit')
         if CL_degrees=="auto":
             self._CL_poly_coefs, self._CL_degrees, self._CLfit_R2 = autoPolyFit(self._data[:,:self._num_dofs], self._data[:, self._num_dofs], **CL_kwargs)
 
@@ -2111,6 +2113,7 @@ class Airfoil:
             raise IOError("Fit degree specification must be 'auto' or type(dict). Got {0} type {1}.".format(CL_degrees, type(CL_degrees)))
         
         # CD
+        if verbose: print('Performing CD curve fit')
         if CD_degrees=="auto":
             self._CD_poly_coefs, self._CD_degrees, self._CDfit_R2 = autoPolyFit(self._data[:,:self._num_dofs], self._data[:,self._num_dofs+1], **CD_kwargs)
 
@@ -2128,6 +2131,7 @@ class Airfoil:
             raise IOError("Fit degree specification must be 'auto' or type(dict). Got {0} type {1}.".format(CL_degrees, type(CL_degrees)))
         
         # Cm
+        if verbose: print('Performing Cm curve fit')
         if Cm_degrees=="auto":
             self._Cm_poly_coefs, self._Cm_degrees, self._Cmfit_R2 = autoPolyFit(self._data[:,:self._num_dofs], self._data[:,self._num_dofs+2], **Cm_kwargs)
 
