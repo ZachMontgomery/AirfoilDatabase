@@ -2080,6 +2080,7 @@ class Airfoil:
         CL_kwargs  = kwargs.pop("CL_kwargs", {})
         CD_kwargs  = kwargs.pop("CD_kwargs", {})
         Cm_kwargs  = kwargs.pop("Cm_kwargs", {})
+        verbose = kwargs.pop('verbose', True)
         CL_kwargs['verbose'] = verbose
         CD_kwargs['verbose'] = verbose
         Cm_kwargs['verbose'] = verbose
