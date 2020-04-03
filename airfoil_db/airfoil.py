@@ -2154,12 +2154,12 @@ class Airfoil:
         if kwargs.get("update_type", True):
             self.set_type("poly_fit")
         
-        self._CLfit_RMS, self._CLfit_RMSN = multivariableRMS(self._data[:,:self._num_dofs], self._data[:,:self._num_dofs], self._CL_poly_coefs, self._CL_degrees, verbose=verbose)
-        self._CDfit_RMS, self._CDfit_RMSN = multivariableRMS(self._data[:,:self._num_dofs], self._data[:,:self._num_dofs+1], self._CD_poly_coefs, self._CD_degrees, verbose=verbose)
-        self._Cmfit_RMS, self._Cmfit_RMSN = multivariableRMS(self._data[:,:self._num_dofs], self._data[:,:self._num_dofs+2], self._Cm_poly_coefs, self._Cm_degrees, verbose=verbose)
+        self._CLfit_RMS, self._CLfit_RMSN = multivariableRMS(self._data[:,:self._num_dofs], self._data[:,self._num_dofs], self._CL_poly_coefs, self._CL_degrees, verbose=verbose)
+        self._CDfit_RMS, self._CDfit_RMSN = multivariableRMS(self._data[:,:self._num_dofs], self._data[:,self._num_dofs+1], self._CD_poly_coefs, self._CD_degrees, verbose=verbose)
+        self._Cmfit_RMS, self._Cmfit_RMSN = multivariableRMS(self._data[:,:self._num_dofs], self._data[:,self._num_dofs+2], self._Cm_poly_coefs, self._Cm_degrees, verbose=verbose)
         
         if verbose:
-            print('CL fits\n'+'='*20)
+            print('\nCL fits\n'+'='*20)
             print('R^2 : {}'.format(self._CLfit_R2))
             print('RMS : {}'.format(self._CLfit_RMS))
             print('RMSN: {}\n'.format(self._CLfit_RMSN))
