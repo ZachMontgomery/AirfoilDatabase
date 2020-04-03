@@ -10,7 +10,7 @@ import json
 import copy
 import os
 import operator
-from .poly_fits import multivariablePolynomialFit, multivariablePolynomialFunction, autoPolyFit, multivairableRMS, multivariableR2
+from .poly_fits import multivariablePolynomialFit, multivariablePolynomialFunction, autoPolyFit, multivariableRMS, multivariableR2
 import io
 import sys
 import warnings
