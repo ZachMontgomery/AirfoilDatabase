@@ -188,6 +188,8 @@ class Airfoil:
         # No geometry given
         else:
             self.geom_specification = "none"
+            self._max_camber = geom_dict.get("max_camber", 0.0)
+            self._max_thickness = geom_dict.get("max_thickness", 0.0)
             return
 
     
@@ -201,6 +203,8 @@ class Airfoil:
             self._m = float(self._naca_des[0])/100
             self._p = float(self._naca_des[1])/10
             self._t = float(self._naca_des[2:])/100
+            self._max_camber = self._m
+            self._max_thickness = self._t
 
             # Camber line
             def camber(x):
@@ -216,7 +220,7 @@ class Airfoil:
                 if abs(self._m)<1e-10 or abs(self._p)<1e-10: # Symmetric
                     return np.zeros_like(x)
                 else:
-                    return np.where(x<self._p, 2*self._m/(self._p*self._p)*(self._p-x), 2*self._m/(1-self._p*self._p)*(self._p-x))
+                    return np.where(x<self._p, 2*self._m/(self._p*self._p)*(self._p-x), 2*self._m/((1-self._p)*(1-self._p))*(self._p-x))
 
             self._camber_deriv = camber_deriv
 
@@ -409,8 +413,9 @@ class Airfoil:
         camber_points = np.concatenate([x_c[:,np.newaxis], y_c[:,np.newaxis]], axis=1)
         self._normalize_points(camber_points, le, te)
 
-        # Store camber
+        # Store camber and max camber
         self._camber_line = interp.UnivariateSpline(camber_points[:,0], camber_points[:,1], k=5, s=1e-10)
+        self._max_camber = np.max(camber_points[:,1])
 
         # Calculate thickness
         y_c = self._camber_line(x_space)
@@ -432,6 +437,7 @@ class Airfoil:
 
         t = 0.5*np.sqrt((x_t_t-x_b_t)*(x_t_t-x_b_t)+(y_t_t-y_b_t)*(y_t_t-y_b_t))
         self._thickness = interp.UnivariateSpline(x_space, t, k=5, s=1e-10)
+        self._max_thickness = np.max(t)
 
         # Calculate estimated top and bottom points
         y_c_pred = self._camber_line(x_space)
@@ -1015,6 +1021,18 @@ class Airfoil:
             return (CL1-CL0)/(2*dx)
 
 
+    def get_max_thickness(self):
+        """Returns the maximum thickness of the airfoil, divided by the chord length.
+        """
+        return self._max_thickness
+
+
+    def get_max_camber(self):
+        """Returns the maximum camber of the airfoil, divided by the chord length.
+        """
+        return self._max_camber
+
+
     def get_outline_points(self, N=200, cluster=True, trailing_flap_deflection=0.0, trailing_flap_fraction=0.0, export=None, top_first=True, close_te=True):
         """Returns an array of outline points showing the geometry of the airfoil.
 
@@ -1052,8 +1070,128 @@ class Airfoil:
         # Check the geometry has been defined
         if self.geom_specification != "none":
 
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            # ZachEdit, zachs section to calculate the airfoil a different way
+            if self.geom_specification == "NACA" and self._trailing_flap_type == 'parabolic':
+                # Get flap parameters
+                df = trailing_flap_deflection
+                x_f = 1.0-trailing_flap_fraction
+                # set default vertical hinge height to camber line
+                y_f = self._input_dict.get("trailing_flap_hinge_height", None)
+                if y_f == None: y_f = self._camber_line(x_f)
+                
+                # calculate preliminary datapoints
+                theta_c = np.linspace(np.pi, -np.pi, N) # loop over entire airfoil from TE->top->LE->bottom->TE
+                if cluster:
+                    s = 0.5*(1.-np.cos(theta_c))  # copy of x_c that is unedited
+                    x_c = 0.5*(1.-np.cos(theta_c))
+                else:
+                    s = abs(np.linspace(-1., 1., N))
+                    x_c = abs(np.linspace(-1., 1., N))
+                
+                # calculate camber line and thickness
+                y_c = self._camber_line(x_c)
+                t = self._thickness(x_c)
+                dyc_dx = self._camber_deriv(x_c)
+                
+                if df != 0. and x_f < 1.:
+                    # Determine which camber points belong to the flap
+                    flap_ind = np.where(x_c>x_f)
+                    
+                    # Calculate the neutral line parameters
+                    l_n = np.sqrt(y_f*y_f+(1-x_f)*(1-x_f))
+                    phi_n = -np.arctan2(y_f, 1-x_f)
+                    
+                    # Calculate the location of the deflected trailing edge
+                    tan_df = np.tan(df)
+                    R = np.sqrt(4*tan_df*tan_df+1)+np.arcsinh(2*tan_df)/(2*tan_df)
+                    E_te = 2.0*l_n/R
+                    
+                    # Find E_p using secant method
+                    
+                    # Constants
+                    R_tan_df = R*tan_df
+                    R_tan_df2 = R_tan_df*R_tan_df
+                    E_0 = ((x_c-x_f)/(1-x_f)*l_n)[flap_ind]
+                    
+                    # Initial guesses
+                    E_p0 = E_te*E_0/l_n
+                    R0 = E_p0/2*np.sqrt(E_p0**2/l_n**2*R_tan_df2+1)+l_n/(2*R_tan_df)*np.arcsinh(E_p0/l_n*R_tan_df)-E_0
+                    E_p1 = E_te*E_0/l_n+0.001
+                    R1 = E_p1/2*np.sqrt(E_p1**2/l_n**2*R_tan_df2+1)+l_n/(2*R_tan_df)*np.arcsinh(E_p1/l_n*R_tan_df)-E_0
+                    
+                    # Suppress warnings because an error will often occur within the np.where that has no effect on computation
+                    np.seterr(invalid='ignore')
+                    
+                    # Iterate
+                    while (abs(R1)>1e-10).any():
+                        
+                        # Update value
+                        E_p2 = np.where(np.abs(R0-R1) != 0.0, E_p1-R1*(E_p0-E_p1)/(R0-R1), E_p1)
+                        
+                        # Get residual
+                        R2 = E_p2/2*np.sqrt(E_p2**2/l_n**2*R_tan_df2+1)+l_n/(2*R_tan_df)*np.arcsinh(E_p2/l_n*R_tan_df)-E_0
+                        
+                        # Update for next iteration
+                        E_p0 = E_p1
+                        R0 = R1
+                        E_p1 = E_p2
+                        R1 = R2
+                    
+                    # return warnings
+                    np.seterr(invalid='warn')
+                    
+                    # Store final result
+                    E_p = E_p1
+                    n_p = -E_p*E_p/E_te*tan_df
+                    
+                    # Calculate deflected neutral line
+                    x_p = x_f+E_p*np.cos(phi_n)-n_p*np.sin(phi_n)
+                    y_p = y_f+E_p*np.sin(phi_n)+n_p*np.cos(phi_n)
+                    y_nl = y_f*(1-(x_c-x_f)/(1.0-x_f))
+                    dy_c = (y_c-y_nl)[flap_ind]
+                    
+                    # Calculate deflected camber line
+                    C = np.arctan(2*E_p/E_te*tan_df)
+                    x_c[flap_ind] = x_p+dy_c*np.sin(C)
+                    y_c[flap_ind] = y_p+dy_c*np.cos(C)
+                    
+                    dyc_dx[flap_ind] = (dyc_dx[flap_ind] - 2*E_p*tan_df/E_te) / (1 + 2*E_p*tan_df/E_te*dyc_dx[flap_ind])
+                    
+                # Outline points
+                X = x_c - t * np.sin(np.arctan(dyc_dx)) * np.sign(theta_c)
+                Y = y_c + t * np.cos(np.arctan(dyc_dx)) * np.sign(theta_c)
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+            
             # Case with no deflection or flap at all
-            if trailing_flap_deflection == 0.0 or trailing_flap_fraction == 0.0:
+            elif trailing_flap_deflection == 0.0 or trailing_flap_fraction == 0.0:
 
                 # Determine spacing of points
                 if cluster:
@@ -1138,9 +1276,8 @@ class Airfoil:
 
                         # Update value
                         # Suppress warnings because an error will often occur within the np.where that has no effect on computation
-                        np.seterr(invalid='ignore')
-                        E_p2 = np.where(np.abs(R0-R1) != 0.0, E_p1-R1*(E_p0-E_p1)/(R0-R1), E_p1)
-                        np.seterr(invalid='warn')
+                        with np.errstate(invalid='ignore'):
+                            E_p2 = np.where(np.abs(R0-R1) != 0.0, E_p1-R1*(E_p0-E_p1)/(R0-R1), E_p1)
 
                         # Get residual
                         R2 = E_p2/2*np.sqrt(E_p2**2/l_n**2*R_tan_df2+1)+l_n/(2*R_tan_df)*np.arcsinh(E_p2/l_n*R_tan_df)-E_0
@@ -1994,69 +2131,73 @@ class Airfoil:
         CL_kwargs : dict, optional
             keyword arguments sent to the CL polynomial fit function
             
-            When CL_degrees is specified as "auto" then CL_kwargs should be
+            When CL_degrees is specified as "auto" then CL_kwargs can be
             
-            max_order : optional integer. gives the max order of polynomial for
-                any one of the independent varialbes to try. defaults to 6
-            tol : optional float. Gives the cut-off value for any polynomial
-                coefficient to not be included in the final results. If a
-                coefficient has an absolute value below tol, it won't be
-                included. defaults to 1e-12
-            sigma : optional float. value used to determine the trade off
-                between how good of a fit to perform and how many terms to keep.
-                defaults to None, which causes the function to calculate sigma
-                automatically using the mean squared of the difference of the
-                independent variable values with respect to the mean independent
-                variable value of the dataset
-            sigma_multiplier : optional float. term multiplied onto sigma to
-                change it's value. Allows using a multiple of the automatically
-                determined sigma value. Defaults to 1.
+                "max_order" : int, optional
+                    gives the max order of polynomial for any one of the independent varialbes
+                    to try. Defaults to 6.
+                "tol" : float, optional
+                    Gives the cut-off value for any polynomial coefficient to not be included
+                    in the final results. If a coefficient has an absolute value below tol,
+                    it won't be included. Defaults to 1e-12.
+                "sigma" : float, optional
+                    value used to determine the trade off between how good of a fit to perform
+                    and how many terms to keep. Defaults to None, which causes the function to
+                    calculate sigma automatically using the mean squared of the difference of
+                    the independent variable values with respect to the mean independent
+                    variable value of the dataset
+                "sigma_multiplier" : float, optional
+                    term multiplied onto sigma to change it's value. Allows using a multiple
+                    of the automatically determined sigma value. Defaults to 1.
             
-            Otherwise CL_kwargs should be
+            Otherwise CL_kwargs could be
             
-            interaction = boolean value with default set to True. This variable
-                determines whether or not interaction terms are included in the
-                fit function. If set to True, interaction terms up the max order
-                for each independent variable are included, i.e. if Nvec = [3,2]
-                then the highest interaction term included is x_1^3*x_2^2.
-                Specific interaction terms can be omitted using the constraints
-                input
-            sym = optional list that defaults as an empty list. If used, the
-                length should be V and each element should contain a boolean,
-                True or False. The ith element determines if the ith independent
-                variable is symmetric either even or odd, which is determined by
-                the order given in Nvec. This will also remove the cooresponding
-                interaction terms if they are enabled.
-            sym_same = optional list that defaults as an empty list. If used,
-                the entries in the list should be tuples with two integers. The
-                integers represent the independent variables that the "same"
-                symmetry condition will be applied. The "same" symmetry forces
-                all interaction terms
-            sym_diff = optional list that defaults as an empty list. 
-            zeroConstraints = an optional list that defaults as an empty list.
-                Entries in the list contain integer tuples of length V. The
-                integer values represent the powers of the independent variables
-                whose coefficient will be forced to 0 before the best fit
-                calculations are performed, allowing the user to omit specific
-                interaction terms or regular polynomial terms
-            constraints = an optional list that defaults to an empty list.
-                Entries in the list contain tuples of length 2. The first entry 
-                is a list of integers that represent the powers of the
-                independent variables whose coefficient will then be forced to
-                be equal to the second entry in the tuple, which should be a
-                float.
-            percent = boolean value with default set to False. When set to True
-                the least squares is performed on the percent error squared.
-                This option should not be used if y contains any zero or near
-                zero values, as this might cause a divide by zero error.
-            weighting = optional callable function that defaults to None. If
-                given, weighting should be a function that takes as arguments:
-                x, y, and p where x and y are the independent and dependent
-                variables defined above and p is the index representing a
-                certain data point. weighting should return a 'weighting factor'
-                that determines how important that datapoint is. Returning a '1'
-                weights the datapoint normally.
-
+                "interaction" : boolean, optional
+                    value with default set to True. This variable determines whether or not
+                    interaction terms are included in the fit function. If set to True,
+                    interaction terms up the max order for each independent variable are
+                    included, i.e. if Nvec = [3,2] then the highest interaction term included
+                    is x_1^3*x_2^2. Specific interaction terms can be omitted using the
+                    constraints input
+                "sym" : list, optional
+                    Defaults to an empty list. If used, the length should be V and each element
+                    should contain a boolean, True or False. The ith element determines if the
+                    ith independent variable is symmetric either even or odd, which is
+                    determined by the order given in Nvec. This will also remove the
+                    cooresponding interaction terms if they are enabled.
+                "sym_same" : list, optional
+                    Defaults as an empty list. If used, the entries in the list should be
+                    tuples with two integers. The integers represent the independent variables
+                    that the "same" symmetry condition will be applied. The "same" symmetry
+                    ensures all interaction terms with exponents of the two independent
+                    variables that are either odd-odd or even-even to be forced to zero
+                "sym_diff" : = list, optional
+                    Defaults as an empty list. Similar to "sym_same" except it enforces the
+                    "diff" symmetry condition which ensures all interaction terms with exponents
+                    of the two independent variables that are either odd-even or even-odd to be
+                    forced to zero
+                "zeroConstraints" : list, optional
+                    Defaults as an empty list. Entries in the list contain integer tuples of
+                    length V. The integer values represent the powers of the independent variables
+                    whose coefficient will be forced to 0 before the best fit calculations are
+                    performed, allowing the user to omit specific interaction terms or regular
+                    polynomial terms
+                "constraints" : list, optional
+                    Defaults to an empty list. Entries in the list contain tuples of length 2.
+                    The first entry is a list of integers that represent the powers of the
+                    independent variables whose coefficient will then be forced to be equal to the
+                    second entry in the tuple, which should be a float.
+                "percent" : boolean, optional
+                    Default set to False. When set to True the least squares is performed on the
+                    percent error squared. This option should not be used if y contains any zero
+                    or near zero values, as this might cause a divide by zero error.
+                "weighting" : function, optional
+                    Defaults to None. If given, weighting should be a function that takes as
+                    arguments x, y, and p where x and y are the independent and dependent
+                    variables defined above and p is the index representing a certain data point.
+                    weighting should return a 'weighting factor' that determines how important
+                    that datapoint is. Returning a '1' weights the datapoint normally.
+        
         CD_kwargs : dict, optional
             Same as CL_kwargs
 
